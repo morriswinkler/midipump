@@ -44,56 +44,82 @@ I'm sure you will be able to infer how to set up the others by the end of this.
 package main
 
 import (
-	"fmt"
+	"log"
 	"math/rand"
+	"os"
 	"sync"
 	"time"
+
+	syscall "golang.org/x/sys/unix"
 )
 
 const (
-	NoteOff         = 0x80 << 8
-	NoteOn          = 0x90 << 8
-	Aftertouch      = 0xa0 << 8
-	ContinuousContr = 0xb0 << 8
-	PatchChange     = 0xc0 << 8
-	ChannelPressure = 0xD0 << 8
-	PitchBend       = 0xE0 << 8
-	SysExC          = 0xF0 << 8
+	NoteOff         = 0x80
+	NoteOn          = 0x90
+	Aftertouch      = 0xa0
+	ContinuousContr = 0xb0
+	PatchChange     = 0xc0
+	ChannelPressure = 0xD0
+	PitchBend       = 0xE0
+	SysExC          = 0xF0
+
+	midiDevice = "/dev/ttyAMA0"
+	logFile    = "/tmp/midipump.log"
 )
 
 var (
 	midiNoteChan chan *note
 	midiNotes    [64]note
 	wg           sync.WaitGroup
+
+	Trace   *log.Logger
+	Info    *log.Logger
+	Warning *log.Logger
+	Error   *log.Logger
 )
 
 type note struct {
-	note     int
-	channel  int
+	note     byte
+	channel  byte
 	duration int
 	state    bool
 }
 
 func midiOut(receiver chan *note) {
 
-	var recv *note
-	var command uint16
+	serial, err := os.OpenFile(midiDevice, syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_NONBLOCK, 0666)
+	if err != nil {
+		Error.Printf("coul not open serial port %s err: %s", midiDevice, err)
+	}
+	defer serial.Close()
+
+	command := make([]byte, 3)
+
 	for {
-		recv = <-receiver
+		recv := <-receiver
 
 		if recv.state {
-			command = NoteOn + uint16(recv.channel)<<8 + uint16(recv.note)
+			command[0] = NoteOn + recv.channel
+			command[1] = recv.note
+			command[2] = 0xff
 		} else {
-			command = NoteOff + uint16(recv.channel)<<8 + uint16(recv.note)
+			command[0] = NoteOn + recv.channel
+			command[1] = recv.note
+			command[2] = 0xff
 		}
 
 		if recv.state {
-			fmt.Printf("note %02d on \tduration %d\n", recv.note, recv.duration)
+			Info.Printf("note %02d on \tduration %d\n", recv.note, recv.duration)
 		} else {
-			fmt.Printf("note %02d off \tduration %d\n", recv.note, recv.duration)
+			Info.Printf("note %02d off \tduration %d\n", recv.note, recv.duration)
 		}
 
-		fmt.Printf("command %016b \n", command)
+		Info.Printf("command %016b \n", command)
+		_, err = serial.Write(command)
+		if err != nil {
+			Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+		}
+
 	}
 }
 
@@ -107,24 +133,48 @@ func (p *note) play(midiOutChan chan *note) {
 
 }
 
+func init() {
+
+	// fdHandl, err := os.OpenFile("file.txt”, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+	// if err != nil {
+	// 	log.Fatalln("Failed to open log file”, output, ":", err)
+	// }
+
+	fdHandle := os.Stdout
+
+	Trace = log.New(fdHandle,
+		"TRACE: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+
+	Info = log.New(fdHandle,
+		"INFO: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+
+	Warning = log.New(fdHandle,
+		"WARNING: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+
+	Error = log.New(fdHandle,
+		"ERROR: ",
+		log.Ldate|log.Ltime|log.Lshortfile)
+
+}
+
 func main() {
 
-	r := rand.New(rand.NewSource(99))
+	_ = rand.New(rand.NewSource(99))
 	midiNoteChan = make(chan *note)
 
 	go midiOut(midiNoteChan)
 
-	for i := range midiNotes {
-
-		midiNotes[i] = note{
-			note:     i,
-			channel:  5,
-			duration: r.Intn(20),
-			state:    true,
-		}
-		wg.Add(1)
-		go midiNotes[i].play(midiNoteChan)
+	midiNotes[0] = note{
+		note:     byte(0),
+		channel:  0x1,
+		duration: 10,
+		state:    true,
 	}
+	wg.Add(1)
+	go midiNotes[0].play(midiNoteChan)
 
 	wg.Wait()
 }
