@@ -244,11 +244,11 @@ func midiOut(receiver chan *note) {
 		if recv.state {
 			command[0] = NoteOn + recv.channel
 			command[1] = recv.note
-			command[2] = 0xff
+			command[2] = 0x7f
 		} else {
-			command[0] = NoteOn + recv.channel
+			command[0] = NoteOff + recv.channel
 			command[1] = recv.note
-			command[2] = 0xff
+			command[2] = 0x7f
 		}
 
 		if recv.state {
