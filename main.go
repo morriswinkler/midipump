@@ -34,8 +34,8 @@ be for MIDI channel 1, and so on.
 All MIDI messages start with a command byte, some messages contain one
 data byte, others contain two or more (see image above). For example, a
 note on command byte is followed by two data bytes: note and velocity.
-
-I'm going to explain how to use note on, note off, velocity, and pitchbend
+I
+'m going to explain how to use note on, note off, velocity, and pitchbend
 in this instructable, since these are the most commonly used commands.
 I'm sure you will be able to infer how to set up the others by the end of this.
 
@@ -44,14 +44,154 @@ I'm sure you will be able to infer how to set up the others by the end of this.
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"fmt"
 	"log"
 	"math/rand"
 	"os"
 	"sync"
 	"time"
+	"unsafe"
 
 	syscall "golang.org/x/sys/unix"
 )
+
+const (
+	UartBase = 0x20201000
+
+	UARTFR = 0x18
+	IBRD   = 0x24
+	FBRD   = 0x28
+	LCRH   = 0x2C
+	UARTCR = 0x30
+)
+
+type Mem struct {
+	Map []byte
+	sync.Mutex
+}
+
+func (m *Mem) Open() (err error) {
+
+	file, err := os.OpenFile("/dev/mem", os.O_RDWR|os.O_SYNC, 0)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Error open /dev/mem", err))
+		return
+	}
+	// for mmap file can be closed after memory mapping is setup
+	defer file.Close()
+
+	// samaphore
+	m.Lock()
+	defer m.Unlock()
+
+	//r.Mem.Map, err = mmap.Map(r.Mem.Fd, r.Mem.Offset, r.Mem.Size, mmap.PROT_READ|mmap.PROT_WRITE, mmap.MAP_SHARED)
+	// mmap call to map DDRRAM
+	m.Map, err = syscall.Mmap(
+		int(file.Fd()),
+		UartBase,
+		4096,
+		syscall.PROT_READ|syscall.PROT_WRITE,
+		syscall.MAP_SHARED)
+
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Error mmap ", err))
+		return err
+	}
+
+	return nil
+}
+
+func setBaudrate() {
+
+	var m Mem
+
+	err := m.Open()
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	m.Lock()
+	defer m.Unlock()
+
+	var rate uint32
+
+	ebuf := bytes.NewReader(m.Map[IBRD:(IBRD + 0x04)])
+	err = binary.Read(ebuf, binary.LittleEndian, &rate)
+	if err != nil {
+		Error.Printf("binary.Read failed:\n", err)
+	}
+
+	Info.Println(rate)
+
+	*(*uint32)(unsafe.Pointer(&m.Map[UARTCR])) = 0x00
+
+	*(*uint32)(unsafe.Pointer(&m.Map[IBRD])) = uint32(6)
+	*(*uint32)(unsafe.Pointer(&m.Map[FBRD])) = 0
+	*(*uint32)(unsafe.Pointer(&m.Map[LCRH])) = 0x70
+	*(*uint32)(unsafe.Pointer(&m.Map[UARTCR])) = 0x0301
+
+	ebuf = bytes.NewReader(m.Map[IBRD:(IBRD + 0x04)])
+	err = binary.Read(ebuf, binary.LittleEndian, &rate)
+	if err != nil {
+		Error.Printf("binary.Read failed:\n", err)
+	}
+
+	Info.Println(rate)
+}
+
+func midiReset(serial *os.File) {
+
+	command0 := make([]byte, 10)
+	command0[0] = 0xf0
+	command0[1] = 0x00
+	command0[2] = 0x20
+	command0[3] = 0x7a
+	command0[4] = 0x05
+	command0[5] = 0x01
+	command0[6] = 0x01
+	command0[7] = 0x01
+	command0[8] = 0x2a
+	command0[9] = 0xf7
+
+	command1 := make([]byte, 10)
+	command1[0] = 0xf0
+	command1[1] = 0x00
+	command1[2] = 0x20
+	command1[3] = 0x7a
+	command1[4] = 0x05
+	command1[5] = 0x04
+	command1[6] = 0x00
+	command1[7] = 0xf7
+
+	command2 := make([]byte, 10)
+	command2[0] = 0xf0
+	command2[1] = 0x00
+	command2[2] = 0x20
+	command2[3] = 0x7a
+	command2[4] = 0x05
+	command2[5] = 0x02
+	command2[6] = 0x05
+	command2[7] = 0xf7
+
+	_, err := serial.Write(command0)
+	if err != nil {
+		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+	}
+
+	_, err = serial.Write(command1)
+	if err != nil {
+		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+	}
+
+	_, err = serial.Write(command2)
+	if err != nil {
+		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+	}
+
+}
 
 const (
 	NoteOff         = 0x80
@@ -69,7 +209,7 @@ const (
 
 var (
 	midiNoteChan chan *note
-	midiNotes    [64]note
+	midiNotes    [100]note
 	wg           sync.WaitGroup
 
 	Trace   *log.Logger
@@ -93,6 +233,9 @@ func midiOut(receiver chan *note) {
 	}
 	defer serial.Close()
 
+	setBaudrate()
+	midiReset(serial)
+
 	command := make([]byte, 3)
 
 	for {
@@ -114,7 +257,7 @@ func midiOut(receiver chan *note) {
 			Info.Printf("note %02d off \tduration %d\n", recv.note, recv.duration)
 		}
 
-		Info.Printf("command %016b \n", command)
+		Info.Printf("command %#v \n", command)
 		_, err = serial.Write(command)
 		if err != nil {
 			Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
@@ -167,14 +310,15 @@ func main() {
 
 	go midiOut(midiNoteChan)
 
-	midiNotes[0] = note{
-		note:     byte(0),
-		channel:  0x1,
-		duration: 10,
-		state:    true,
+	for i := range midiNotes {
+		midiNotes[i] = note{
+			note:     byte(i),
+			channel:  0x0,
+			duration: 10,
+			state:    true,
+		}
+		wg.Add(1)
+		go midiNotes[i].play(midiNoteChan)
 	}
-	wg.Add(1)
-	go midiNotes[0].play(midiNoteChan)
-
 	wg.Wait()
 }
