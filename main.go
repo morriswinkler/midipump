@@ -209,7 +209,7 @@ const (
 
 var (
 	midiNoteChan chan *note
-	midiNotes    [100]note
+	midiNotes    [64]note
 	wg           sync.WaitGroup
 
 	Trace   *log.Logger
@@ -310,9 +310,10 @@ func main() {
 
 	go midiOut(midiNoteChan)
 
+	// TODO: figur out why f7 ... 64 do not work on the mideco board
 	for i := range midiNotes {
 		midiNotes[i] = note{
-			note:     byte(i),
+			note:     byte(36 + i),
 			channel:  0x0,
 			duration: 10,
 			state:    true,
