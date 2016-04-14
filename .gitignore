@@ -24,3 +24,9 @@ _testmain.go
 *.test
 *.prof
 
+#intellij idea files
+.idea
+*.iml
+
+# emacs back ups
+*~
