@@ -46,16 +46,24 @@ package main
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"log"
-	"math/rand"
 	"os"
 	"sync"
 	"time"
 	"unsafe"
 
+	"flag"
+	"strconv"
+	"strings"
+
 	syscall "golang.org/x/sys/unix"
+
+	"net/http"
+
+	"github.com/janberktold/sse"
 )
 
 const (
@@ -88,7 +96,7 @@ func (m *Mem) Open() (err error) {
 	defer m.Unlock()
 
 	//r.Mem.Map, err = mmap.Map(r.Mem.Fd, r.Mem.Offset, r.Mem.Size, mmap.PROT_READ|mmap.PROT_WRITE, mmap.MAP_SHARED)
-	// mmap call to map DDRRAM
+	// mmap call to map the uart clock registers
 	m.Map, err = syscall.Mmap(
 		int(file.Fd()),
 		UartBase,
@@ -208,14 +216,18 @@ const (
 )
 
 var (
-	midiNoteChan chan *note
-	midiNotes    [64]note
-	wg           sync.WaitGroup
+	midiNoteChan chan *note // channel for note changes
+	sseChan      chan *note // channel to send server side events
+
+	pumps midiNotes
+	wg    sync.WaitGroup
 
 	Trace   *log.Logger
 	Info    *log.Logger
 	Warning *log.Logger
 	Error   *log.Logger
+
+	emulate bool = false
 )
 
 type note struct {
@@ -225,16 +237,64 @@ type note struct {
 	state    bool
 }
 
+type midiNotes [32]note
+
+func (m *midiNotes) readCsvFile(file string) (err error) {
+
+	csvfile, err := os.Open(file)
+
+	if err != nil {
+		return err
+	}
+	defer csvfile.Close()
+
+	reader := csv.NewReader(csvfile)
+
+	reader.FieldsPerRecord = 2 // see the Reader struct information below
+
+	rawCSVdata, err := reader.ReadAll()
+
+	if err != nil {
+		return err
+	}
+
+	// sanity check, display to standard output
+	for i, v := range rawCSVdata {
+		pump, err := strconv.Atoi(strings.TrimSpace(v[0]))
+		duration, err := strconv.Atoi(strings.TrimSpace(v[1]))
+		if err != nil {
+			return err
+		}
+
+		Info.Printf("pump : %d with duration : %d ms\n", pump, duration)
+
+		m[i] = note{
+			note:     byte(36 + pump),
+			channel:  0x0,
+			duration: duration,
+			state:    true,
+		}
+	}
+
+	return nil
+}
+
 func midiOut(receiver chan *note) {
 
-	serial, err := os.OpenFile(midiDevice, syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_NONBLOCK, 0666)
-	if err != nil {
-		Error.Printf("coul not open serial port %s err: %s", midiDevice, err)
-	}
-	defer serial.Close()
+	var serial *os.File
+	var err error
+	// just initialize the serial port and the mideco if emulate=false
+	if !emulate {
 
-	setBaudrate()
-	midiReset(serial)
+		serial, err = os.OpenFile(midiDevice, syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_NONBLOCK, 0666)
+		if err != nil {
+			Error.Printf("coul not open serial port %s err: %s", midiDevice, err)
+		}
+		defer serial.Close()
+
+		setBaudrate()
+		midiReset(serial)
+	}
 
 	command := make([]byte, 3)
 
@@ -258,9 +318,12 @@ func midiOut(receiver chan *note) {
 		}
 
 		Info.Printf("command %#v \n", command)
-		_, err = serial.Write(command)
-		if err != nil {
-			Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+
+		if !emulate {
+			_, err = serial.Write(command)
+			if err != nil {
+				Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+			}
 		}
 
 	}
@@ -269,7 +332,7 @@ func midiOut(receiver chan *note) {
 func (p *note) play(midiOutChan chan *note) {
 
 	midiOutChan <- p
-	time.Sleep(time.Duration(p.duration) * time.Second)
+	time.Sleep(time.Duration(p.duration) * time.Millisecond)
 	p.state = false
 	midiOutChan <- p
 	wg.Done()
@@ -277,6 +340,8 @@ func (p *note) play(midiOutChan chan *note) {
 }
 
 func init() {
+
+	flag.BoolVar(&emulate, "emulate", false, "enable hardware emulation")
 
 	// fdHandl, err := os.OpenFile("file.txt”, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	// if err != nil {
@@ -303,23 +368,71 @@ func init() {
 
 }
 
+func pumpAll(notesChan chan *note) {
+
+	// TODO: figur out why 57 ... 64 do not work on the mideco board
+	Info.Println("i am here")
+	for i := range pumps {
+
+		wg.Add(1)
+		go pumps[i].play(midiNoteChan)
+	}
+	wg.Wait()
+
+}
+
 func main() {
 
-	_ = rand.New(rand.NewSource(99))
+	// read command line arguments
+	flag.Parse()
+
+	err := pumps.readCsvFile("csv/example.csv")
+	if err != nil {
+		Error.Printf("error reading csv file: %s", err)
+	}
+
 	midiNoteChan = make(chan *note)
+	sseChan = make(chan *note)
 
 	go midiOut(midiNoteChan)
 
-	// TODO: figur out why f7 ... 64 do not work on the mideco board
-	for i := range midiNotes {
-		midiNotes[i] = note{
-			note:     byte(36 + i),
-			channel:  0x0,
-			duration: 10,
-			state:    true,
+	serverEvents(sseChan)
+
+}
+
+func serverEvents(msgChan chan *note) {
+
+	http.HandleFunc("/event", func(w http.ResponseWriter, r *http.Request) {
+		// get a SSE connection from the HTTP request
+		// in a real world situation, you should look for the error (second return value)
+		conn, _ := sse.Upgrade(w, r)
+
+		for {
+			// keep this goroutine alive to keep the connection
+
+			// get a message from some channel
+			// blocks until it recieves a messages and then instantly sends it to the client
+			msg := <-msgChan
+			Info.Println(msg)
+			conn.WriteJson(struct {
+				Id   int
+				Note *note
+			}{
+				Id:   int(msg.note),
+				Note: msg,
+			})
 		}
-		wg.Add(1)
-		go midiNotes[i].play(midiNoteChan)
-	}
-	wg.Wait()
+	})
+
+	http.HandleFunc("/pump", func(w http.ResponseWriter, r *http.Request) {
+		go pumpAll(midiNoteChan)
+
+	})
+
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, ("./static" + r.URL.Path))
+	})
+
+	http.ListenAndServe(":8080", nil)
+
 }
