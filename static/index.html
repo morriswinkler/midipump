@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+<div id="app" >
+
+    <div class="row">UI element</div>
+    <input type="text" v-model="textinput" class="form-control">
+
+    <p> </p>
+
+
+    <button v-on:click="pump">Pump</button>
+
+</div>
+</body>
+<script type="text/javascript" src="node_modules/vue/dist/vue.min.js"></script>
+<script type="text/javascript" src="node_modules/vue-resource/dist/vue-resource.js"></script>
+<script type="text/javascript" src="node_modules/d3/d3.js"></script>
+<script type="text/javascript">
+
+
+
+    var app = new Vue({
+        el: '#app',
+
+        data : {
+            textinput: 'Too hot, hot damn.',
+            pumps: []
+        },
+
+        ready : function()
+        {
+            this.initPumps();
+            this.listenToSSE();
+            initD3(this.pumps)
+        },
+
+        methods : {
+            pump: function(event)
+            {
+                this.$http.get("/pump");
+            },
+
+            initPumps: function()
+            {
+                for(i=0; i <64; i++) {
+                    this.pumps.$set(i,{"Note": i, "Channel": 0, "Duration": 0, "State": false});
+                }
+            },
+
+            listenToSSE: function()
+            {
+                var evtSource = new EventSource("/event");
+                evtSource.onmessage = function(e) {
+                    var data = JSON.parse(e.data);
+                    app.pumps.$set(data.Id, data.Note);
+                    updateD3(app.pumps);
+                }
+            }
+        }
+
+    });
+
+    function initD3(data)
+    {
+
+        var distDiv = 16;
+
+        var square = 40;
+        var width = square*8.5
+        var height = square*9;
+
+
+
+        d3.select('body').append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .selectAll('circle.red')
+                .data(data).enter()
+                .append('circle')
+                .style('fill', 'red')
+                .attr('r', square/2 )
+                .attr('cx', function(d){ return ((d.Note % 8) * square + square/2); })
+                .attr('cy', function(d){ return (((8 - (d.Note % 8) + d.Note)/8) * square); })
+
+        d3.select('body').append('svg')
+                .attr('width', width)
+                .attr('height', height)
+                .selectAll('circle.blue')
+                .data(data).enter()
+                .append('circle')
+                .style('fill', 'blue')
+                .attr('r', 2 )
+                .attr('cx', function(d){ return ((d.Note % 8) * square + square/2); })
+                .attr('cy', function(d){ return (((8 - (d.Note % 8) + d.Note)/8) * square); })
+
+
+
+
+    }
+
+    function updateD3(data)
+    {
+        var width = window.innerWidth;
+        var height = window.innerHeight;
+
+        d3.select('body').selectAll('circle.blue')
+                .data(data)
+                .style('fill', 'blue')
+                .attr('r', function(d){ return d.Duration+10; })
+                //.attr('cx', function(d){ return ((d.Note % 8) * width/8 + width/8/2); })
+                //.attr('cy', function(d){ return (((8 - (d.Note % 8) + d.Note)/8) * height/8); })
+    }
+
+
+
+</script>
+
+
+</html>
