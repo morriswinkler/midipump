@@ -11,10 +11,11 @@ import (
 )
 
 type note struct {
-	note     byte
-	channel  byte
-	duration int
-	state    bool
+	Id       int
+	Note     byte
+	Channel  byte
+	Duration int
+	State    bool
 }
 
 type midiNotes [32]note
@@ -49,10 +50,11 @@ func (m *midiNotes) readCsvFile(file string) (err error) {
 		Info.Printf("pump : %d with duration : %d ms\n", pump, duration)
 
 		m[i] = note{
-			note:     byte(36 + pump),
-			channel:  0x0,
-			duration: duration,
-			state:    true,
+			Id:       pump,
+			Note:     byte(36 + pump),
+			Channel:  0x0,
+			Duration: duration,
+			State:    true,
 		}
 	}
 
@@ -81,20 +83,20 @@ func midiOut(receiver chan *note) {
 	for {
 		recv := <-receiver
 
-		if recv.state {
-			command[0] = NoteOn + recv.channel
-			command[1] = recv.note
+		if recv.State {
+			command[0] = NoteOn + recv.Channel
+			command[1] = recv.Note
 			command[2] = 0x7f
 		} else {
-			command[0] = NoteOff + recv.channel
-			command[1] = recv.note
+			command[0] = NoteOff + recv.Channel
+			command[1] = recv.Note
 			command[2] = 0x7f
 		}
 
-		if recv.state {
-			Info.Printf("note %02d on \tduration %d\n", recv.note, recv.duration)
+		if recv.State {
+			Info.Printf("note %02d on \tduration %d\n", recv.Note, recv.Duration)
 		} else {
-			Info.Printf("note %02d off \tduration %d\n", recv.note, recv.duration)
+			Info.Printf("note %02d off \tduration %d\n", recv.Note, recv.Duration)
 		}
 
 		Info.Printf("command %#v \n", command)
@@ -112,8 +114,8 @@ func midiOut(receiver chan *note) {
 func (p *note) play(midiOutChan chan *note) {
 
 	midiOutChan <- p
-	time.Sleep(time.Duration(p.duration) * time.Millisecond)
-	p.state = false
+	time.Sleep(time.Duration(p.Duration) * time.Millisecond)
+	p.State = false
 	midiOutChan <- p
 	wg.Done()
 

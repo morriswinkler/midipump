@@ -3,6 +3,8 @@ package main
 import (
 	"net/http"
 
+	"time"
+
 	"github.com/janberktold/sse"
 )
 
@@ -18,15 +20,16 @@ func serverEvents(msgChan chan *note) {
 
 			// get a message from some channel
 			// blocks until it recieves a messages and then instantly sends it to the client
-			msg := <-msgChan
-			Info.Println(msg)
-			conn.WriteJson(struct {
-				Id   int
-				Note *note
-			}{
-				Id:   int(msg.note),
-				Note: msg,
-			})
+			//msg := <-msgChan
+			//Info.Println(msg)
+
+			//for i, note := ranges midiNotes {
+			for i := range pumps {
+				conn.WriteJson(pumps[i])
+
+			}
+			time.Sleep(time.Second * 10)
+
 		}
 	})
 

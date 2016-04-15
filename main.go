@@ -163,7 +163,6 @@ func init() {
 func pumpAll(notesChan chan *note) {
 
 	// TODO: figur out why 57 ... 64 do not work on the mideco board
-	Info.Println("i am here")
 	for i := range pumps {
 
 		wg.Add(1)
