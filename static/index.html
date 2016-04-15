@@ -1,19 +1,32 @@
 <!DOCTYPE html>
 <html>
-
+  <head>
+    <link href="node_modules/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+  
 <body>
 <div id="app" >
 
-    <div class="row">UI element</div>
-    <input type="text" v-model="textinput" class="form-control">
 
     <ul id="chartList">
-        <li v-for="pump in pumps">
-            Pump {{ $index+1 }} with duration {{pump.Duration}} 
+
+      <div class="btn-group btn-group-vertical">
+	<button v-on:click="pump" class="btn btn-default" type="button"><i class="glyphicon glyphicon-align-center"></i> Sequence Starten</button>
+	<button v-on:click="pumpAllStart" class="btn btn-default" type="button"><i class="glyphicon glyphicon-align-center"></i> Alle Starten</button>
+	<button v-on:click="pumpAllStop" class="btn btn-default" type="button"><i class="glyphicon glyphicon-align-center"></i> Alle Stoppen</button>
+      </div>
+
+
+      <h3> uplaod CSV File </h3>
+      <form enctype="multipart/form-data" action="upload" method="post">
+	<input type="file" name="uploadfile" />
+	<input type="submit" value="upload" />
+      </form>
+      
+      <li v-for="pump in pumps" style="list-style: none;">
+            <!-- Pump {{ $index+1 }} with duration {{pump.Duration}} -->
         </li>
-
-        <button v-on:click="pump">Pump</button>
-
+      
     </ul>
 
     <p> </p>
@@ -50,6 +63,14 @@
                 pump: function(event)
                 {
                     this.$http.get("/pump");
+                },
+                pumpAllStart: function(event)
+                {
+                    this.$http.get("/pumpAllStart");
+                },
+                pumpAllStop: function(event)
+                {
+                    this.$http.get("/pumpAllStop");
                 },
 
                 initPumps: function()

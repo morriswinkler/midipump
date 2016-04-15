@@ -44,63 +44,11 @@ I'm sure you will be able to infer how to set up the others by the end of this.
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"sync"
-
-	"flag"
 )
-
-func midiReset(serial *os.File) {
-
-	command0 := make([]byte, 10)
-	command0[0] = 0xf0
-	command0[1] = 0x00
-	command0[2] = 0x20
-	command0[3] = 0x7a
-	command0[4] = 0x05
-	command0[5] = 0x01
-	command0[6] = 0x01
-	command0[7] = 0x01
-	command0[8] = 0x2a
-	command0[9] = 0xf7
-
-	command1 := make([]byte, 10)
-	command1[0] = 0xf0
-	command1[1] = 0x00
-	command1[2] = 0x20
-	command1[3] = 0x7a
-	command1[4] = 0x05
-	command1[5] = 0x04
-	command1[6] = 0x00
-	command1[7] = 0xf7
-
-	command2 := make([]byte, 10)
-	command2[0] = 0xf0
-	command2[1] = 0x00
-	command2[2] = 0x20
-	command2[3] = 0x7a
-	command2[4] = 0x05
-	command2[5] = 0x02
-	command2[6] = 0x05
-	command2[7] = 0xf7
-
-	_, err := serial.Write(command0)
-	if err != nil {
-		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
-	}
-
-	_, err = serial.Write(command1)
-	if err != nil {
-		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
-	}
-
-	_, err = serial.Write(command2)
-	if err != nil {
-		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
-	}
-
-}
 
 const (
 	NoteOff         = 0x80
@@ -117,8 +65,8 @@ const (
 )
 
 var (
-	midiNoteChan chan *note // channel for note changes
-	sseChan      chan *note // channel to send server side events
+	midiNoteChan chan note // channel for note changes
+	sseChan      chan note // channel to send server side events
 
 	pumps midiNotes
 	wg    sync.WaitGroup
@@ -128,12 +76,14 @@ var (
 	Warning *log.Logger
 	Error   *log.Logger
 
-	emulate bool = false
+	emulate    bool = false
+	singlePump int  = 0
 )
 
 func init() {
 
 	flag.BoolVar(&emulate, "emulate", false, "enable hardware emulation")
+	flag.IntVar(&singlePump, "pump", 0, "start single pump")
 
 	// fdHandl, err := os.OpenFile("file.txt”, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	// if err != nil {
@@ -160,16 +110,40 @@ func init() {
 
 }
 
-func pumpAll(notesChan chan *note) {
+func pumpSeq(notesChan chan note) {
 
 	// TODO: figur out why 57 ... 64 do not work on the mideco board
 	for i := range pumps {
 
-		wg.Add(1)
 		go pumps[i].play(midiNoteChan)
 	}
-	wg.Wait()
 
+}
+
+func pumpAllStart(notesChan chan note) {
+
+	for i := range pumps {
+		pumps[i].State = true
+		notesChan <- pumps[i]
+	}
+
+}
+
+func pumpAllStop(notesChan chan note) {
+
+	for i := range pumps {
+		pumps[i].State = false
+		notesChan <- pumps[i]
+	}
+	err := pumps.readCsvFile("/root/go/src/git.laydrop.com/m.winkler/midipump/csv/upload.csv")
+	if err != nil {
+		Error.Printf("error reading csv file: %s", err)
+	}
+}
+
+func pumpSingle(i int, notesChan chan note) {
+
+	notesChan <- pumps[i]
 }
 
 func main() {
@@ -177,15 +151,19 @@ func main() {
 	// read command line arguments
 	flag.Parse()
 
-	err := pumps.readCsvFile("csv/example.csv")
+	err := pumps.readCsvFile("/root/go/src/git.laydrop.com/m.winkler/midipump/csv/upload.csv")
 	if err != nil {
 		Error.Printf("error reading csv file: %s", err)
 	}
 
-	midiNoteChan = make(chan *note)
-	sseChan = make(chan *note)
+	midiNoteChan = make(chan note)
+	sseChan = make(chan note)
 
 	go midiOut(midiNoteChan)
+
+	if singlePump != 0 {
+		pumpSingle(singlePump, midiNoteChan)
+	}
 
 	serverEvents(sseChan)
 

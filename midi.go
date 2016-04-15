@@ -18,7 +18,7 @@ type note struct {
 	State    bool
 }
 
-type midiNotes [32]note
+type midiNotes [36]note
 
 func (m *midiNotes) readCsvFile(file string) (err error) {
 
@@ -51,17 +51,19 @@ func (m *midiNotes) readCsvFile(file string) (err error) {
 
 		m[i] = note{
 			Id:       pump,
-			Note:     byte(36 + pump),
+			Note:     byte(35 + pump),
 			Channel:  0x0,
 			Duration: duration,
 			State:    true,
 		}
+
+		Info.Println(m[i])
 	}
 
 	return nil
 }
 
-func midiOut(receiver chan *note) {
+func midiOut(receiver chan note) {
 
 	var serial *os.File
 	var err error
@@ -80,8 +82,10 @@ func midiOut(receiver chan *note) {
 
 	command := make([]byte, 3)
 
+	var recv note
 	for {
-		recv := <-receiver
+		recv = <-receiver
+		Info.Printf("receive %#v\n", recv)
 
 		if recv.State {
 			command[0] = NoteOn + recv.Channel
@@ -111,12 +115,60 @@ func midiOut(receiver chan *note) {
 	}
 }
 
-func (p *note) play(midiOutChan chan *note) {
-
+func (p note) play(midiOutChan chan note) {
 	midiOutChan <- p
 	time.Sleep(time.Duration(p.Duration) * time.Millisecond)
 	p.State = false
 	midiOutChan <- p
-	wg.Done()
+}
+
+func midiReset(serial *os.File) {
+
+	command0 := make([]byte, 10)
+	command0[0] = 0xf0
+	command0[1] = 0x00
+	command0[2] = 0x20
+	command0[3] = 0x7a
+	command0[4] = 0x05
+	command0[5] = 0x01
+	command0[6] = 0x01
+	command0[7] = 0x01
+	command0[8] = 0x24
+	command0[9] = 0xf7
+
+	command1 := make([]byte, 10)
+	command1[0] = 0xf0
+	command1[1] = 0x00
+	command1[2] = 0x20
+	command1[3] = 0x7a
+	command1[4] = 0x05
+	command1[5] = 0x04
+	command1[6] = 0x00
+	command1[7] = 0xf7
+
+	command2 := make([]byte, 10)
+	command2[0] = 0xf0
+	command2[1] = 0x00
+	command2[2] = 0x20
+	command2[3] = 0x7a
+	command2[4] = 0x05
+	command2[5] = 0x02
+	command2[6] = 0x05
+	command2[7] = 0xf7
+
+	_, err := serial.Write(command0)
+	if err != nil {
+		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+	}
+
+	_, err = serial.Write(command1)
+	if err != nil {
+		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+	}
+
+	_, err = serial.Write(command2)
+	if err != nil {
+		Error.Printf("coul not write to serial port %s err: %s", midiDevice, err)
+	}
 
 }
