@@ -14,7 +14,7 @@ type note struct {
 	Id       int
 	Note     byte
 	Channel  byte
-	Duration int
+	Duration uint64
 	State    bool
 }
 
@@ -41,8 +41,10 @@ func (m *midiNotes) readCsvFile(file string) (err error) {
 
 	// sanity check, display to standard output
 	for i, v := range rawCSVdata {
-		pump, err := strconv.Atoi(strings.TrimSpace(v[0]))
-		duration, err := strconv.Atoi(strings.TrimSpace(v[1]))
+		pump, err := strconv.Atoi(strings.TrimSpace(v[0]))        // convert from string to int
+		intDuration, err := strconv.Atoi(strings.TrimSpace(v[1])) // convert from string to int
+		duration := uint64(intDuration)                           // convert to uint64
+
 		if err != nil {
 			return err
 		}

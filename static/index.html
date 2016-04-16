@@ -2,48 +2,78 @@
 <html>
   <head>
     <link href="node_modules/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
-    </head>
+
+  <style>
+      .btn-file {
+          position: relative;
+          overflow: hidden;
+      }
+      .btn-file input[type=file] {
+          position: absolute;
+          top: 0;
+          right: 0;
+          min-width: 100%;
+          min-height: 100%;
+          font-size: 100px;
+          text-align: right;
+          filter: alpha(opacity=0);
+          opacity: 0;
+          outline: none;
+          background: white;
+          cursor: inherit;
+          display: block;
+      }
+  </style>
+
+  </head>
   
 <body>
 <div id="app" >
 
 
-    <ul id="chartList">
-
-      <div class="btn-group btn-group-vertical">
-	<button v-on:click="pump" class="btn btn-default" type="button"><i class="glyphicon glyphicon-align-center"></i> Sequence Starten</button>
-	<button v-on:click="pumpAllStart" class="btn btn-default" type="button"><i class="glyphicon glyphicon-align-center"></i> Alle Starten</button>
-	<button v-on:click="pumpAllStop" class="btn btn-default" type="button"><i class="glyphicon glyphicon-align-center"></i> Alle Stoppen</button>
-      </div>
-
-
-      <h3> uplaod CSV File </h3>
-      <form enctype="multipart/form-data" action="upload" method="post">
-	<input type="file" name="uploadfile" />
-	<input type="submit" value="upload" />
-      </form>
-      
-      <li v-for="pump in pumps" style="list-style: none;">
-            <!-- Pump {{ $index+1 }} with duration {{pump.Duration}} -->
-        </li>
-      
-    </ul>
-
-    <p> </p>
+    <div class="row">
+        <div class="col-md-8 col-md-offset-2 col-xs-8 col-xs-offset-2 col-sm-8 col-sm-offset-2">
+            <h3 class="text-center"> Pumpen Steuerung</h3>
+            <div class="row">
+                <div class=" col-md-8 col-md-offset-2 col-xs-12 btn-group.btn-group-justified btn-group-vertical">
+	                <button v-on:click="pump" class="btn btn-primary" type="button"><i class="glyphicon glyphicon-align-justify"></i> Seq. Starten</button>
+	                <button v-on:click="pumpAllStart" class="btn btn-primary" type="button"><i class="glyphicon glyphicon-align-left"></i> Alle Starten</button>
+	                <button v-on:click="pumpAllStop" class="btn btn-primary" type="button"><i class="glyphicon glyphicon-align-left"></i> Alle Stoppen</button>
+                </div>
+            </div>
 
 
+            <div class="row">
+                    <div class="col-md-8 col-md-offset-2 text-center">
+                    <h3> CSV Datei hochladen </h3>
+                    <span class="btn btn-primary btn-file col-xs-12">
+                        Browse <input v-on:change="upload" type="file" name="csv" id="csv" >
+                    </span>
+                </div>
+            </div>
 
+
+            <ul>
+                <li v-for="pump in pumps" style="list-style: none;">
+                    <!-- Pump {{ $index+1 }} with duration {{pump.Duration}} -->
+                </li>
+            </ul>
+        </div>
+    </div>
 
 </div>
 </body>
-<script type="text/javascript" src="node_modules/vue/dist/vue.min.js"></script>
-<script type="text/javascript" src="node_modules/vue-resource/dist/vue-resource.js"></script>
-<script type="text/javascript" src="node_modules/d3/d3.js"></script>
-<script type="text/javascript">
+  <script type="text/javascript" src="node_modules/jquery/dist/jquery.min.js"></script>
+  <script type="text/javascript" src="node_modules/bootstrap/dist/js/bootstrap.min.js"></script>
+  <script type="text/javascript" src="node_modules/vue/dist/vue.min.js"></script>
+  <script type="text/javascript" src="node_modules/vue-resource/dist/vue-resource.js"></script>
+  <script type="text/javascript" src="node_modules/d3/d3.js"></script>
+  <script type="text/javascript" src="node_modules/datatables.net/js/jquery.dataTables.js"></script>
+  <script type="text/javascript">
 
 
         var app = new Vue({
-            el: '#chartList',
+            el: '#app',
             computed: {
                 width: 10,
                 height: 30,
@@ -72,6 +102,23 @@
                 {
                     this.$http.get("/pumpAllStop");
                 },
+                upload: function(event)
+                {
+                    event.preventDefault();
+
+                    var files = csv.files;
+
+                    var data = new FormData();
+                    // for single file
+                    data.append('uploadfile', files[0]);
+
+                    this.$http.post('/upload', data, function (data, status, request) {
+                    }).error(function (data, status, request) {
+
+                    });
+
+                    $('#csv').val('');
+                },
 
                 initPumps: function()
                 {
@@ -89,7 +136,6 @@
                     }
                 }
             },
-
         });
 //    var app = new Vue({
 //        el: '#app',
@@ -186,6 +232,7 @@
 
 
 </script>
+
 
 
 </html>

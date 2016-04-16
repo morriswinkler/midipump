@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -50,36 +49,52 @@ func serverEvents(msgChan chan note) {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, ("/root/go/src/git.laydrop.com/m.winkler/midipump/static" + r.URL.Path))
+		http.ServeFile(w, r, ("static" + r.URL.Path))
 	})
 
 	http.HandleFunc("/upload", upload)
 
-	http.ListenAndServe(":80", nil)
-
+	if emulate {
+		http.ListenAndServe(":8080", nil)
+	} else {
+		http.ListenAndServe(":80", nil)
+	}
 }
 
 // upload logic
 func upload(w http.ResponseWriter, r *http.Request) {
 	r.ParseMultipartForm(32 << 20)
-	file, handler, err := r.FormFile("uploadfile")
+	Info.Println(r)
+	file, _, err := r.FormFile("uploadfile")
 	if err != nil {
-		fmt.Println(err)
+		Error.Printf("unable to read uploadfile: %s", err)
 		return
 	}
 	defer file.Close()
-	fmt.Fprintf(w, "%v", handler.Header)
-	f, err := os.OpenFile("/root/go/src/git.laydrop.com/m.winkler/midipump/csv/upload.csv", os.O_WRONLY|os.O_CREATE, 0666)
+
+	// get filepath
+	fileName := getBasePath("csv/upload.csv")
+
+	// delete old file
+	err = os.Remove(fileName)
 	if err != nil {
-		fmt.Println(err)
+		Error.Printf("unable to remove uploadfile: %s", err)
+	}
+
+	// write new file
+	f, err := os.OpenFile(fileName, os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		Error.Printf("unable to crate uploadfile: %s", err)
 		return
 	}
-	defer f.Close()
-	io.Copy(f, file)
 
-	err = pumps.readCsvFile("/root/go/src/git.laydrop.com/m.winkler/midipump/csv/upload.csv")
+	io.Copy(f, file)
+	f.Close()
+
+	// load CSV File
+	err = loadCsv()
 	if err != nil {
-		Error.Printf("error reading csv file: %s", err)
+		Error.Printf("unable to load csv file: %s", err)
 	}
 
 }

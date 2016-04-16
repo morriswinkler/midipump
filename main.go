@@ -47,7 +47,8 @@ import (
 	"flag"
 	"log"
 	"os"
-	"sync"
+	"path/filepath"
+	"strings"
 )
 
 const (
@@ -68,22 +69,27 @@ var (
 	midiNoteChan chan note // channel for note changes
 	sseChan      chan note // channel to send server side events
 
+	// all pu,ps
 	pumps midiNotes
-	wg    sync.WaitGroup
 
+	// logger
 	Trace   *log.Logger
 	Info    *log.Logger
 	Warning *log.Logger
 	Error   *log.Logger
 
-	emulate    bool = false
-	singlePump int  = 0
+	// command line args
+	emulate    bool
+	singlePump int
+
+	// programm base path
+	basePath string
 )
 
 func init() {
 
 	flag.BoolVar(&emulate, "emulate", false, "enable hardware emulation")
-	flag.IntVar(&singlePump, "pump", 0, "start single pump")
+	flag.IntVar(&singlePump, "pump", -1, "start single pump")
 
 	// fdHandl, err := os.OpenFile("file.txt”, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	// if err != nil {
@@ -107,6 +113,13 @@ func init() {
 	Error = log.New(fdHandle,
 		"ERROR: ",
 		log.Ldate|log.Ltime|log.Lshortfile)
+
+	// get the basePath
+	var err error
+	basePath, err = filepath.Abs(filepath.Dir(os.Args[0]))
+	if err != nil {
+		Error.Fatalf("could not read basedir, %s", err)
+	}
 
 }
 
@@ -135,9 +148,11 @@ func pumpAllStop(notesChan chan note) {
 		pumps[i].State = false
 		notesChan <- pumps[i]
 	}
-	err := pumps.readCsvFile("/root/go/src/git.laydrop.com/m.winkler/midipump/csv/upload.csv")
+
+	// reread CSV file
+	err := loadCsv()
 	if err != nil {
-		Error.Printf("error reading csv file: %s", err)
+		Error.Printf("unable to load csv file: %s", err)
 	}
 }
 
@@ -146,14 +161,31 @@ func pumpSingle(i int, notesChan chan note) {
 	notesChan <- pumps[i]
 }
 
+func loadCsv() error {
+
+	filepath := getBasePath("csv/upload.csv")
+	err := pumps.readCsvFile(filepath)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func getBasePath(file string) string {
+	s := []string{basePath, file}
+	res := strings.Join(s, "/")
+	return res
+}
+
 func main() {
 
 	// read command line arguments
 	flag.Parse()
 
-	err := pumps.readCsvFile("/root/go/src/git.laydrop.com/m.winkler/midipump/csv/upload.csv")
+	// load CSV File
+	err := loadCsv()
 	if err != nil {
-		Error.Printf("error reading csv file: %s", err)
+		Error.Printf("unable to load csv file: %s", err)
 	}
 
 	midiNoteChan = make(chan note)
@@ -161,7 +193,7 @@ func main() {
 
 	go midiOut(midiNoteChan)
 
-	if singlePump != 0 {
+	if singlePump != -1 {
 		pumpSingle(singlePump, midiNoteChan)
 	}
 
