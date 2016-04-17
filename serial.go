@@ -100,8 +100,6 @@ func setBaudrate() {
 
 func openSerialRumba(deviceFile string) (f *os.File, err error) {
 
-	rate := syscall.B1152000
-
 	f, err = os.OpenFile(deviceFile, syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_NONBLOCK, 0666)
 	if err != nil {
 		return nil, err
@@ -113,19 +111,14 @@ func openSerialRumba(deviceFile string) (f *os.File, err error) {
 		}
 	}()
 
-	// Base settings
-	cflagToUse := syscall.CREAD | syscall.CLOCAL | rate
-	cflagToUse |= syscall.CS8
-
 	fd := f.Fd()
-	readTimeout := time.Duration(time.Second * 5)
-	vmin, vtime := posixTimeoutValues(readTimeout)
+	vmin, vtime := posixTimeoutValues(time.Duration(time.Second * 5))
 	t := syscall.Termios{
 		Iflag:  syscall.IGNPAR,
-		Cflag:  uint32(cflagToUse),
+		Cflag:  syscall.CS8 | syscall.CREAD | syscall.CLOCAL | uint32(0x1002),
 		Cc:     [19]uint8{syscall.VMIN: vmin, syscall.VTIME: vtime},
-		Ispeed: uint32(rate),
-		Ospeed: uint32(rate),
+		Ispeed: uint32(0x1002),
+		Ospeed: uint32(0x1002),
 	}
 
 	if _, _, errno := syscall.Syscall6(
