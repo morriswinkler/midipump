@@ -1,9 +1,23 @@
 package main
 
+import "time"
+
 func rumba(cmd chan string) {
 	port, err := openSerialRumba(rumbaDevice)
 	if err != nil {
 		Error.Printf("error opening rumba serial device: %s", err)
+	}
+
+	time.Sleep(time.Duration(time.Second * 3))
+
+	_, err = port.WriteString("G28 Z\n")
+	if err != nil {
+		Error.Printf("error writing to rumba controller: %s", err)
+	}
+
+	_, err = port.WriteString("G1 Z50\n")
+	if err != nil {
+		Error.Printf("error writing to rumba controller: %s", err)
 	}
 
 	for {
