@@ -61,13 +61,16 @@ const (
 	PitchBend       = 0xE0
 	SysExC          = 0xF0
 
-	midiDevice = "/dev/ttyAMA0"
-	logFile    = "/tmp/midipump.log"
+	midiDevice  = "/dev/ttyAMA0"
+	rumbaDevice = "/dev/ttyACM0"
+	logFile     = "/tmp/midipump.log"
 )
 
 var (
 	midiNoteChan chan note // channel for note changes
 	sseChan      chan note // channel to send server side events
+
+	rumbaChan chan string // channel to connect to rumba
 
 	// all pu,ps
 	pumps midiNotes
@@ -191,7 +194,10 @@ func main() {
 	midiNoteChan = make(chan note)
 	sseChan = make(chan note)
 
+	rumbaChan = make(chan string)
+
 	go midiOut(midiNoteChan)
+	go rumba(rumbaChan)
 
 	if singlePump != -1 {
 		pumpSingle(singlePump, midiNoteChan)

@@ -10,6 +10,7 @@ import (
 
 	"bytes"
 	"encoding/binary"
+	"time"
 	"unsafe"
 )
 
@@ -95,4 +96,75 @@ func setBaudrate() {
 	}
 
 	Info.Println(rate)
+}
+
+func openSerialRumba(deviceFile string) (f *os.File, err error) {
+
+	rate := syscall.B1152000
+
+	f, err = os.OpenFile(deviceFile, syscall.O_RDWR|syscall.O_NOCTTY|syscall.O_NONBLOCK, 0666)
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err != nil && f != nil {
+			f.Close()
+		}
+	}()
+
+	// Base settings
+	cflagToUse := syscall.CREAD | syscall.CLOCAL | rate
+	cflagToUse |= syscall.CS8
+
+	fd := f.Fd()
+	readTimeout := time.Duration(time.Second * 5)
+	vmin, vtime := posixTimeoutValues(readTimeout)
+	t := syscall.Termios{
+		Iflag:  syscall.IGNPAR,
+		Cflag:  uint32(cflagToUse),
+		Cc:     [19]uint8{syscall.VMIN: vmin, syscall.VTIME: vtime},
+		Ispeed: uint32(rate),
+		Ospeed: uint32(rate),
+	}
+
+	if _, _, errno := syscall.Syscall6(
+		syscall.SYS_IOCTL,
+		uintptr(fd),
+		uintptr(syscall.TCSETS),
+		uintptr(unsafe.Pointer(&t)),
+		0,
+		0,
+		0,
+	); errno != 0 {
+		return nil, errno
+	}
+
+	if err = syscall.SetNonblock(int(fd), false); err != nil {
+		return
+	}
+
+	return f, nil
+}
+
+func posixTimeoutValues(readTimeout time.Duration) (vmin uint8, vtime uint8) {
+	const MAXUINT8 = 1<<8 - 1 // 255
+	// set blocking / non-blocking read
+	var minBytesToRead uint8 = 1
+	var readTimeoutInDeci int64
+	if readTimeout > 0 {
+		// EOF on zero read
+		minBytesToRead = 0
+		// convert timeout to deciseconds as expected by VTIME
+		readTimeoutInDeci = (readTimeout.Nanoseconds() / 1e6 / 100)
+		// capping the timeout
+		if readTimeoutInDeci < 1 {
+			// min possible timeout 1 Deciseconds (0.1s)
+			readTimeoutInDeci = 1
+		} else if readTimeoutInDeci > MAXUINT8 {
+			// max possible timeout is 255 deciseconds (25.5s)
+			readTimeoutInDeci = MAXUINT8
+		}
+	}
+	return minBytesToRead, uint8(readTimeoutInDeci)
 }

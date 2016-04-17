@@ -49,7 +49,7 @@ func (m *midiNotes) readCsvFile(file string) (err error) {
 			return err
 		}
 
-		Info.Printf("pump : %d with duration : %d ms\n", pump, duration)
+		Info.Printf("pump : %d with duration : %d ms, iterator %d\n", pump, duration, i)
 
 		m[i] = note{
 			Id:       pump,

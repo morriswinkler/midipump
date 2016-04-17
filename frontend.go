@@ -47,6 +47,15 @@ func serverEvents(msgChan chan note) {
 		go pumpAllStop(midiNoteChan)
 
 	})
+	http.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
+		Info.Println("before home")
+		rumbaChan <- "home"
+		Info.Println("after home")
+	})
+	http.HandleFunc("/move", func(w http.ResponseWriter, r *http.Request) {
+		rumbaChan <- "move"
+
+	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, ("static" + r.URL.Path))

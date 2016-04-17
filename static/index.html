@@ -41,6 +41,13 @@
 	                <button v-on:click="pumpAllStop" class="btn btn-primary" type="button"><i class="glyphicon glyphicon-align-left"></i> Alle Stoppen</button>
                 </div>
             </div>
+            <h3 class="text-center"> Form Steuerung</h3>
+            <div class="row">
+                <div class=" col-md-8 col-md-offset-2 col-xs-12 btn-group.btn-group-justified btn-group-vertical">
+	                <button v-on:click="move" class="btn btn-primary" type="button"><i class="glyphicon glyphicon-align-justify"></i> Heben</button>
+	                <button v-on:click="home" class="btn btn-primary" type="button"><i class="glyphicon glyphicon-align-left"></i> Senken</button>
+                </div>
+            </div>
 
 
             <div class="row">
@@ -58,6 +65,31 @@
                     <!-- Pump {{ $index+1 }} with duration {{pump.Duration}} -->
                 </li>
             </ul>
+
+	    <table>
+	      <thead>
+		<tr>
+		  <th v-for="key in columns"
+		      @click="sortBy(key)"
+		      :class="{active: sortKey == key}">
+		    {{key | capitalize}}
+		    <span class="arrow"
+			  :class="sortOrders[key] > 0 ? 'asc' : 'dsc'">
+		    </span>
+		  </th>
+		</tr>
+	      </thead>
+	      <tbody>
+		      <tr v-for="
+				 entry in data
+				 | filterBy filterKey
+				 | orderBy sortKey sortOrders[sortKey]">
+			<td v-for="key in columns">
+			  {{entry[key]}}
+			</td>
+		      </tr>
+	      </tbody>
+	    </table>
         </div>
     </div>
 
@@ -82,8 +114,10 @@
                     return this.$el.querySelector('canvas');
                 }
             },
-            data: {
-                pumps: []
+        data: {
+	        search: '',
+	        gridColumns: ['Pump', 'Note', 'Channel', 'Duration', 'State'],
+                gridData: [] 
             },
             ready : function() {
                 this.initPumps();
@@ -101,6 +135,14 @@
                 pumpAllStop: function(event)
                 {
                     this.$http.get("/pumpAllStop");
+                },
+	        move: function(event)
+                {
+                    this.$http.get("/move");
+                },
+	        home: function(event)
+                {
+                    this.$http.get("/home");
                 },
                 upload: function(event)
                 {
@@ -123,7 +165,7 @@
                 initPumps: function()
                 {
                     for(i=0 ; i <32; i++) {
-                        this.pumps.$set(i,{"Note": i, "Channel": 0, "Duration": 0, "State": false});
+                        this.gridData.$set(i,{"Note": i, "Channel": 0, "Duration": 0, "State": false});
                     }
                 },
 
@@ -132,7 +174,7 @@
                     var evtSource = new EventSource("/event");
                     evtSource.onmessage = function(e) {
                         var data = JSON.parse(e.data);
-                        app.pumps.$set(data.Id-1, data);
+                        app.gridData.$set(data.Id-1, data);
                     }
                 }
             },
