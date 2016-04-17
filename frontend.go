@@ -58,7 +58,8 @@ func serverEvents(msgChan chan note) {
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, ("static" + r.URL.Path))
+		static := getBasePath("static")
+		http.ServeFile(w, r, (static + r.URL.Path))
 	})
 
 	http.HandleFunc("/upload", upload)
