@@ -15,13 +15,13 @@ import (
 )
 
 const (
-	UartBase = 0x20201000
+	UartBase = 0x20201000 // UART register base address
 
-	UARTFR = 0x18
-	IBRD   = 0x24
-	FBRD   = 0x28
-	LCRH   = 0x2C
-	UARTCR = 0x30
+	UARTFR = 0x18 // flag reg (RO)
+	IBRD   = 0x24 // integer baud rate register
+	FBRD   = 0x28 // fractional baud rate register
+	LCRH   = 0x2C // Line control register (also called UARTLCR_H in the PL011 docs)
+	UARTCR = 0x30 // UART control register
 )
 
 type Mem struct {
@@ -36,14 +36,13 @@ func (m *Mem) Open() (err error) {
 		err = errors.New(fmt.Sprintf("Error open /dev/mem", err))
 		return
 	}
-	// for mmap file can be closed after memory mapping is setup
+	// mmap file can be closed after memory mapping is setup
 	defer file.Close()
 
-	// samaphore
+	// semaphore
 	m.Lock()
 	defer m.Unlock()
 
-	//r.Mem.Map, err = mmap.Map(r.Mem.Fd, r.Mem.Offset, r.Mem.Size, mmap.PROT_READ|mmap.PROT_WRITE, mmap.MAP_SHARED)
 	// mmap call to map the uart clock registers
 	m.Map, err = syscall.Mmap(
 		int(file.Fd()),
@@ -80,6 +79,7 @@ func setBaudrate() {
 		Error.Printf("binary.Read failed:\n", err)
 	}
 
+	// current rate
 	Info.Println(rate)
 
 	*(*uint32)(unsafe.Pointer(&m.Map[UARTCR])) = 0x00
@@ -95,6 +95,7 @@ func setBaudrate() {
 		Error.Printf("binary.Read failed:\n", err)
 	}
 
+	// new rate 31250
 	Info.Println(rate)
 }
 
